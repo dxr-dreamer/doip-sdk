@@ -1,0 +1,5 @@
+NEXUS_USERNAME=abc
+NEXUS_PASSWORD=def
+signing.keyId=ghi
+signing.password=jkl
+signing.secretKeyRingFile=mno

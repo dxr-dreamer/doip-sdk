@@ -1,0 +1,185 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'maven-publish'
+    id 'signing'
+    id 'com.github.johnrengelman.shadow' version '4.0.2'
+}
+
+
+group 'org.bdware.doip'
+
+version '1.5.5'
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
+repositories {
+    mavenCentral()
+}
+
+shadowJar {
+    dependencies {
+        relocate 'com.google.common', 'irs.com.google.common'
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.encoding = "UTF-8"
+}
+tasks.withType(Copy) {
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+}
+
+mainClassName = 'org.bdware.doip.test'
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'src/main/codec', 'src/main/endpoint', 'src/main/channel'
+        }
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+    test {
+        java {
+            srcDir 'src/test/java'
+        }
+        resources {
+            srcDir 'src/test/resources'
+        }
+    }
+}
+
+
+dependencies {
+    implementation 'org.apache.logging.log4j:log4j-core:2.17.2'
+    implementation 'org.apache.logging.log4j:log4j-api:2.17.2'
+    implementation 'io.netty:netty-codec:4.1.86.Final'
+    implementation 'io.netty:netty-codec-http:4.1.77.Final'
+    implementation 'com.google.code.gson:gson:2.8.9'
+    testImplementation 'net.dona.doip:doip-sdk:2.1.0'
+    testImplementation 'io.netty:netty-all:4.1.86.Final'
+    testImplementation 'junit:junit:4.13.1'
+    // 添加依赖
+    implementation 'org.apache.httpcomponents:httpclient:4.5.13'
+    implementation 'com.google.code.gson:gson:2.8.9'
+    // 添加Mockito用于模拟测试
+    testImplementation 'org.mockito:mockito-core:3.6.0'
+    testImplementation 'org.mockito:mockito-junit-jupiter:3.6.0'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.7.0'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.0'
+}
+
+// 确保JUnit 5可以作为测试引擎运行
+test {
+    useJUnitPlatform()
+}
+
+task fatJar(type: Jar) {
+//    manifest {
+//        attributes 'Main-Class': ''
+//    }
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    from { configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+task copyDependencies(type: Copy, dependsOn: [jar]) {
+    from configurations.runtimeClasspath
+    into 'build/output/libs'
+}
+task copyJar(type: Copy, dependsOn: [copyDependencies]) {
+    from "./build/libs/$project.name-${version}.jar"
+    into "./build/output/"
+    rename { String fileName -> "doip-sdk-${version}.jar" }
+}
+task releaseFat(type: Copy, dependsOn: [fatJar]) {
+    from "./build/libs/$project.name-${version}.jar"
+    into "./build/output/"
+    rename { String fileName -> "doipsdk-fat-v${version}.jar" }
+}
+
+task release(type: Zip, dependsOn: [copyJar, copyDependencies]) {
+    from 'build/output'
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    exclude(
+            "doipsdk-fat-v${version}.jar"
+    )
+    archiveFileName = "doipsdk-v${version}.zip"
+    destinationDirectory = file('./build/')
+}
+task classJar(type: Jar, dependsOn: classes) {
+    classifier = "jar"
+}
+task sourceJar(type: Jar, dependsOn: classes) {
+    archiveClassifier = "sources"
+    classifier = "sources"
+    from sourceSets.main.allSource
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    archiveClassifier = 'javadoc'
+    classifier = "javadoc"
+    from javadoc.destinationDir
+}
+javadoc {
+    options.encoding = "UTF-8"
+}
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId project.group
+            artifactId "doip-sdk"
+            version "${version}"
+            from components.java
+            artifact sourceJar
+            artifact javadocJar
+            artifact classJar
+            pom {
+                name = "bdware-doip-sdk"
+                description = "doip sdk developed by bdware"
+                url = "https://gitee.com/BDWare/doip-sdk"
+                licenses {
+                    license {
+                        name = "Mulan PSL v2"
+                        url = "http://license.coscl.org.cn/MulanPSL2"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "dataware"
+                        email = "caihq@pku.edu.cn"
+                    }
+                }
+                scm {
+                    connection = "scm:git:https://gitee.com/BDWare/doip-sdk.git"
+                    developerConnection = "scm:git:https://gitee.com/BDWare/doip-sdk.git"
+                    url = "https://gitee.com/BDWare/doip-sdk"
+                }
+            }
+
+        }
+    }
+    repositories {
+        maven {
+            name 'bdwareSnapshot'
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
+            credentials {
+                username = "${NEXUS_USERNAME}"
+                password = "${NEXUS_PASSWORD}"
+            }
+        }
+        maven {
+            name 'bdware'
+            url 'https://oss.sonatype.org/service/local/staging/deploy/maven2'
+            credentials {
+                username = "${NEXUS_USERNAME}"
+                password = "${NEXUS_PASSWORD}"
+            }
+        }
+    }
+}
+signing {
+    sign publishing.publications.mavenJava
+}
